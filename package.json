@@ -1,0 +1,35 @@
+{
+    "author": "antrikshy@gmail.com",
+    "dependencies": {},
+    "keywords": [],
+    "name": "habitual",
+    "pebble": {
+        "capabilities": [
+            "configurable"
+        ],
+        "displayName": "Habitual",
+        "enableMultiJS": true,
+        "messageKeys": [
+            "Habit1",
+            "Habit2",
+            "Habit3",
+            "Habit4",
+            "Habit5"
+        ],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "aplite",
+            "basalt",
+            "chalk"
+        ],
+        "uuid": "35f8dfaf-c005-466f-a3e7-4f6c5756f65b",
+        "watchapp": {
+            "watchface": true
+        }
+    },
+    "version": "1.0.0"
+}
