@@ -1,8 +1,19 @@
 #include <pebble.h>
 
+#define HABIT_STRING_MAX_LENGTH 50
+#define NUM_OF_HABITS 5
+
+#define HABIT1_PERSIST_KEY 0
+#define HABIT2_PERSIST_KEY 1
+#define HABIT3_PERSIST_KEY 2
+#define HABIT4_PERSIST_KEY 3
+#define HABIT5_PERSIST_KEY 4
+
 static Window *s_main_window;
 static TextLayer *s_time_layer;
 static TextLayer *s_habit_layer;
+
+static unsigned char s_current_habit = 0;
 
 static void update_time(struct tm *tick_time) {
   // Write hours and minutes into a buffer
@@ -13,8 +24,25 @@ static void update_time(struct tm *tick_time) {
   text_layer_set_text(s_time_layer, s_buffer);
 }
 
+static void rotate_habit() {
+  char new_habit[HABIT_STRING_MAX_LENGTH];
+  
+  // If no habit set at this index, end
+  if (!persist_exists(s_current_habit)) return;
+  
+  // Else, read habit from storage
+  persist_read_string(s_current_habit++, new_habit, sizeof(new_habit));
+  
+  // Rotate habit index if necessary
+  if (s_current_habit >= NUM_OF_HABITS) {
+    s_current_habit = 0;
+  }
+}
+
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time(tick_time);
+  
+  // TODO: Rotate habit every 5 minutes
 }
 
 static void main_window_load(Window *window) {
@@ -51,6 +79,8 @@ static void main_window_load(Window *window) {
   
   // Subscribe to tick timer for future time updates
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+  
+  rotate_habit();
 }
 
 static void main_window_unload(Window *window) {
@@ -59,30 +89,37 @@ static void main_window_unload(Window *window) {
 }
 
 static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
+  // Retrieve and persist user's habit strings
+  
+  // TODO: Delete for empty strings
+  
   Tuple *h1 = dict_find(iterator, MESSAGE_KEY_Habit1);
   if (h1) {
-    
+    persist_write_string(HABIT1_PERSIST_KEY, h1->value->cstring);
   }
   
   Tuple *h2 = dict_find(iterator, MESSAGE_KEY_Habit2);
   if (h2) {
-    
+    persist_write_string(HABIT2_PERSIST_KEY, h2->value->cstring);
   }
   
   Tuple *h3 = dict_find(iterator, MESSAGE_KEY_Habit3);
   if (h3) {
-    
+    persist_write_string(HABIT3_PERSIST_KEY, h3->value->cstring);
   }
   
   Tuple *h4 = dict_find(iterator, MESSAGE_KEY_Habit4);
   if (h4) {
-    
+    persist_write_string(HABIT4_PERSIST_KEY, h4->value->cstring);
   }
   
   Tuple *h5 = dict_find(iterator, MESSAGE_KEY_Habit5);
   if (h5) {
-    
+    persist_write_string(HABIT5_PERSIST_KEY, h5->value->cstring);
   }
+  
+  // Rotate habits to prevent an old one from persisting until next rotation
+  rotate_habit();
 }
 
 static void init() {
