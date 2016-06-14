@@ -9,11 +9,13 @@
 #define HABIT4_PERSIST_KEY 3
 #define HABIT5_PERSIST_KEY 4
 
+#define PLACEHOLDER_HABIT "Add custom text here using the Pebble app"
+
 static Window *s_main_window;
 static TextLayer *s_time_layer;
 static TextLayer *s_habit_layer;
 
-static unsigned char s_current_habit = 0;
+static unsigned char s_current_habit = HABIT1_PERSIST_KEY;
 
 static void update_time(struct tm *tick_time) {
   // Write hours and minutes into a buffer
@@ -25,24 +27,28 @@ static void update_time(struct tm *tick_time) {
 }
 
 static void rotate_habit() {
-  char new_habit[HABIT_STRING_MAX_LENGTH];
+  // Intermediary buffer to hold new habit string
+  static char new_habit[HABIT_STRING_MAX_LENGTH];
   
-  // If no habit set at this index, end
-  if (!persist_exists(s_current_habit)) return;
+  // Find next set habit, treating storage as circular buffer
+  int i = s_current_habit;
+  do {
+    s_current_habit = (s_current_habit + 1) % NUM_OF_HABITS;
+    if (persist_exists(s_current_habit)) {
+      // Write habit to watchface
+      persist_read_string(s_current_habit, new_habit, sizeof(new_habit));
+      text_layer_set_text(s_habit_layer, new_habit); 
+      return;
+    }
+  } while (s_current_habit != i);
   
-  // Else, read habit from storage
-  persist_read_string(s_current_habit++, new_habit, sizeof(new_habit));
-  
-  // Rotate habit index if necessary
-  if (s_current_habit >= NUM_OF_HABITS) {
-    s_current_habit = 0;
-  }
+  // If nothing found, set to placeholder text
+  text_layer_set_text(s_habit_layer, PLACEHOLDER_HABIT);
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time(tick_time);
-  
-  // TODO: Rotate habit every 5 minutes
+  rotate_habit();
 }
 
 static void main_window_load(Window *window) {
@@ -60,12 +66,12 @@ static void main_window_load(Window *window) {
   text_layer_set_text_color(s_time_layer, GColorWhite);
   text_layer_set_text_color(s_habit_layer, GColorWhite);
   text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_LECO_38_BOLD_NUMBERS));
-  text_layer_set_font(s_habit_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  text_layer_set_font(s_habit_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
   text_layer_set_text_alignment(s_habit_layer, GTextAlignmentCenter);
 
   // Default text on habit layer
-  text_layer_set_text(s_habit_layer, "Add custom text here using the Pebble app");
+  text_layer_set_text(s_habit_layer, PLACEHOLDER_HABIT);
 
   // Add it as a child layer to the Window's root layer
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
@@ -81,6 +87,7 @@ static void main_window_load(Window *window) {
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   
   rotate_habit();
+  rotate_habit();
 }
 
 static void main_window_unload(Window *window) {
@@ -89,36 +96,46 @@ static void main_window_unload(Window *window) {
 }
 
 static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
-  // Retrieve and persist user's habit strings
-  
-  // TODO: Delete for empty strings
-  
+  // Catch and persist user's habit strings
+    
   Tuple *h1 = dict_find(iterator, MESSAGE_KEY_Habit1);
-  if (h1) {
+  if (strlen(h1->value->cstring) > 0) {
     persist_write_string(HABIT1_PERSIST_KEY, h1->value->cstring);
+  }
+  else {
+    persist_delete(HABIT1_PERSIST_KEY);
   }
   
   Tuple *h2 = dict_find(iterator, MESSAGE_KEY_Habit2);
-  if (h2) {
+  if (strlen(h2->value->cstring) > 0) {
     persist_write_string(HABIT2_PERSIST_KEY, h2->value->cstring);
+  } else {
+    persist_delete(HABIT2_PERSIST_KEY);
   }
   
   Tuple *h3 = dict_find(iterator, MESSAGE_KEY_Habit3);
-  if (h3) {
+  if (strlen(h3->value->cstring) > 0) {
     persist_write_string(HABIT3_PERSIST_KEY, h3->value->cstring);
+  } else {
+    persist_delete(HABIT3_PERSIST_KEY);
   }
   
   Tuple *h4 = dict_find(iterator, MESSAGE_KEY_Habit4);
-  if (h4) {
+  if (strlen(h4->value->cstring) > 0) {
     persist_write_string(HABIT4_PERSIST_KEY, h4->value->cstring);
+  } else {
+    persist_delete(HABIT4_PERSIST_KEY);
   }
   
   Tuple *h5 = dict_find(iterator, MESSAGE_KEY_Habit5);
-  if (h5) {
+  if (strlen(h5->value->cstring) > 0) {
     persist_write_string(HABIT5_PERSIST_KEY, h5->value->cstring);
+  } else {
+    persist_delete(HABIT5_PERSIST_KEY);
   }
   
   // Rotate habits to prevent an old one from persisting until next rotation
+  s_current_habit = HABIT5_PERSIST_KEY; // Hacky way to cycle habits in order
   rotate_habit();
 }
 
@@ -131,6 +148,13 @@ static void init() {
     .unload = main_window_unload,
   });
   window_stack_push(s_main_window, true);
+  
+  // Largest expected inbox and outbox message sizes
+  const uint32_t inbox_size = 250;
+  const uint32_t outbox_size = 0;
+  
+  // Open AppMessage
+  app_message_open(inbox_size, outbox_size);
   
   // Prep AppMessage receive
   app_message_register_inbox_received(inbox_received_callback);
