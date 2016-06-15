@@ -15,6 +15,7 @@
 static Window *s_main_window;
 static TextLayer *s_time_layer;
 static TextLayer *s_habit_layer;
+static TextLayer *s_date_layer;
 
 static uint8_t s_current_habit = HABIT1_PERSIST_KEY;  // Tracks storage index of current habit
 static uint8_t s_minutes_since_rotation = 0;  // Tracks minutes since last habit change
@@ -26,6 +27,15 @@ static void update_time(struct tm *tick_time) {
 
   // Display this time on the TextLayer
   text_layer_set_text(s_time_layer, s_buffer);
+}
+
+static void update_date(struct tm *tick_time) {
+  // Write hours and minutes into a buffer
+  static char s_buffer[8];
+  strftime(s_buffer, sizeof(s_buffer), "%b %d ", tick_time);
+
+  // Display this time on the TextLayer
+  text_layer_set_text(s_date_layer, s_buffer);
 }
 
 static void rotate_habit() {
@@ -50,11 +60,15 @@ static void rotate_habit() {
   text_layer_set_text(s_habit_layer, PLACEHOLDER_HABIT);
 }
 
-static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
+static void minute_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time(tick_time);
   s_minutes_since_rotation = (s_minutes_since_rotation + 1) % MINUTES_BETWEEN_ROTATION;
   if (s_minutes_since_rotation == 0)
     rotate_habit();
+}
+
+static void day_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
+  update_date(tick_time);
 }
 
 static void main_window_load(Window *window) {
@@ -63,19 +77,30 @@ static void main_window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer);
   int window_width = bounds.size.w;
     
-  // Create TextLayer elements
-  s_time_layer = text_layer_create(GRect(0, 30, window_width, 65));
-  s_habit_layer = text_layer_create(GRect(PBL_IF_ROUND_ELSE(5, 0), 75, PBL_IF_ROUND_ELSE((window_width - 10), window_width), 65));
+  // Create and position TextLayer elements
+  s_time_layer = text_layer_create(GRect(0, PBL_IF_ROUND_ELSE(30, 20), window_width, 65));
+  s_habit_layer = text_layer_create(GRect(5, PBL_IF_ROUND_ELSE(75, 65), (window_width - 10), 65));
+  s_date_layer = text_layer_create(GRect(0, 135, window_width, 30));
   
-  // Position TextLayer elements in window
+  // Set background color to clear
   text_layer_set_background_color(s_time_layer, GColorClear);
   text_layer_set_background_color(s_habit_layer, GColorClear);
+  text_layer_set_background_color(s_date_layer, GColorClear);
+  
+  // Set text color to white
   text_layer_set_text_color(s_time_layer, GColorWhite);
   text_layer_set_text_color(s_habit_layer, GColorWhite);
+  text_layer_set_text_color(s_date_layer, GColorWhite);
+  
+  // Set fonts
   text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_LECO_38_BOLD_NUMBERS));
   text_layer_set_font(s_habit_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  
+  // Center all text
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
   text_layer_set_text_alignment(s_habit_layer, GTextAlignmentCenter);
+  text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
 
   // Default text on habit layer
   text_layer_set_text(s_habit_layer, PLACEHOLDER_HABIT);
@@ -83,16 +108,20 @@ static void main_window_load(Window *window) {
   // Add it as a child layer to the Window's root layer
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
   layer_add_child(window_layer, text_layer_get_layer(s_habit_layer));
+  layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
   
-  // Get and display current time at load
+  // Get and display current time and date at load
   time_t temp = time(NULL);
   struct tm *tick_time = localtime(&temp);
-  
   update_time(tick_time);
+  update_date(tick_time);
   
   // Subscribe to tick timer for future time updates
-  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+  tick_timer_service_subscribe(MINUTE_UNIT, minute_tick_handler);
+  tick_timer_service_subscribe(DAY_UNIT, day_tick_handler);
   
+  // Display habits starting at first one at load
+  s_current_habit = HABIT1_PERSIST_KEY;
   rotate_habit();
 }
 
@@ -103,6 +132,8 @@ static void main_window_unload(Window *window) {
 
 static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
   // Catch and persist user's habit strings
+  // Takes all empty fields and deletes from storage, because it is assumed that
+  // any unedited habits will be saved in localStorage and re-sent from JavaScript
     
   Tuple *h1 = dict_find(iterator, MESSAGE_KEY_Habit1);
   if (strlen(h1->value->cstring) > 0) {
@@ -159,7 +190,7 @@ static void init() {
   const uint32_t inbox_size = 250;
   const uint32_t outbox_size = 0;
   
-  // Open AppMessage
+  // Open AppMessag
   app_message_open(inbox_size, outbox_size);
   
   // Prep AppMessage receive
