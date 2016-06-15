@@ -2,6 +2,7 @@
 
 #define HABIT_STRING_MAX_LENGTH 50
 #define NUM_OF_HABITS 5
+#define MINUTES_BETWEEN_ROTATION 5
 
 #define HABIT1_PERSIST_KEY 0
 #define HABIT2_PERSIST_KEY 1
@@ -15,7 +16,8 @@ static Window *s_main_window;
 static TextLayer *s_time_layer;
 static TextLayer *s_habit_layer;
 
-static unsigned char s_current_habit = HABIT1_PERSIST_KEY;
+static uint8_t s_current_habit = HABIT1_PERSIST_KEY;  // Tracks storage index of current habit
+static uint8_t s_minutes_since_rotation = 0;  // Tracks minutes since last habit change
 
 static void update_time(struct tm *tick_time) {
   // Write hours and minutes into a buffer
@@ -29,6 +31,8 @@ static void update_time(struct tm *tick_time) {
 static void rotate_habit() {
   // Intermediary buffer to hold new habit string
   static char new_habit[HABIT_STRING_MAX_LENGTH];
+
+  s_minutes_since_rotation = 0; // Reset rotation timing
   
   // Find next set habit, treating storage as circular buffer
   int i = s_current_habit;
@@ -48,17 +52,20 @@ static void rotate_habit() {
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time(tick_time);
-  rotate_habit();
+  s_minutes_since_rotation = (s_minutes_since_rotation + 1) % MINUTES_BETWEEN_ROTATION;
+  if (s_minutes_since_rotation == 0)
+    rotate_habit();
 }
 
 static void main_window_load(Window *window) {
   // Get information about the Window
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
-
+  int window_width = bounds.size.w;
+    
   // Create TextLayer elements
-  s_time_layer = text_layer_create(GRect(0, PBL_IF_ROUND_ELSE(30, 30), bounds.size.w, 50));
-  s_habit_layer = text_layer_create(GRect(0, PBL_IF_ROUND_ELSE(75, 75), bounds.size.w, 50));
+  s_time_layer = text_layer_create(GRect(0, 30, window_width, 65));
+  s_habit_layer = text_layer_create(GRect(PBL_IF_ROUND_ELSE(5, 0), 75, PBL_IF_ROUND_ELSE((window_width - 10), window_width), 65));
   
   // Position TextLayer elements in window
   text_layer_set_background_color(s_time_layer, GColorClear);
@@ -86,7 +93,6 @@ static void main_window_load(Window *window) {
   // Subscribe to tick timer for future time updates
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   
-  rotate_habit();
   rotate_habit();
 }
 
