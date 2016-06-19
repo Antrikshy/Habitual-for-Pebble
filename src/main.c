@@ -60,15 +60,13 @@ static void rotate_habit() {
   text_layer_set_text(s_habit_layer, PLACEHOLDER_HABIT);
 }
 
-static void minute_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
+static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time(tick_time);
+  update_date(tick_time);
+  
   s_minutes_since_rotation = (s_minutes_since_rotation + 1) % MINUTES_BETWEEN_ROTATION;
   if (s_minutes_since_rotation == 0)
     rotate_habit();
-}
-
-static void day_tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-  update_date(tick_time);
 }
 
 static void main_window_load(Window *window) {
@@ -117,8 +115,7 @@ static void main_window_load(Window *window) {
   update_date(tick_time);
   
   // Subscribe to tick timer for future time updates
-  tick_timer_service_subscribe(MINUTE_UNIT, minute_tick_handler);
-  tick_timer_service_subscribe(DAY_UNIT, day_tick_handler);
+  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   
   // Display habits starting at first one at load
   s_current_habit = HABIT1_PERSIST_KEY;
@@ -190,7 +187,7 @@ static void init() {
   const uint32_t inbox_size = 250;
   const uint32_t outbox_size = 0;
   
-  // Open AppMessag
+  // Open AppMessage
   app_message_open(inbox_size, outbox_size);
   
   // Prep AppMessage receive
