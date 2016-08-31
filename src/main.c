@@ -13,6 +13,7 @@
 #define PLACEHOLDER_HABIT "Add custom text here using the Pebble app"
 
 static Window *s_main_window;
+static TextLayer *s_battery_layer;
 static TextLayer *s_time_layer;
 static TextLayer *s_habit_layer;
 static TextLayer *s_date_layer;
@@ -60,6 +61,33 @@ static void rotate_habit() {
   text_layer_set_text(s_habit_layer, PLACEHOLDER_HABIT);
 }
 
+static void hide_battery_level(void* context) {
+  layer_set_hidden((Layer*) s_battery_layer, true);
+}
+
+static void display_battery_level() {
+  BatteryChargeState battery_state = battery_state_service_peek();
+  uint8_t battery_level = battery_state.charge_percent;
+  bool battery_plugged = battery_state.is_plugged;
+  static char s_buffer[14];
+  
+  if (battery_plugged) {  
+    snprintf(s_buffer, sizeof(s_buffer), "Plugged in");
+  }
+  else {
+    snprintf(s_buffer, sizeof(s_buffer), "Battery: %d%%", battery_level);
+  }
+ 
+  // Set battery info
+  text_layer_set_text(s_battery_layer, s_buffer);
+  
+  // Show battery info
+  layer_set_hidden((Layer*) s_battery_layer, false);
+  
+  // Set timer to hide battery info
+  app_timer_register(3000, hide_battery_level, NULL);
+}
+
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time(tick_time);
   update_date(tick_time);
@@ -69,6 +97,10 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
     rotate_habit();
 }
 
+static void tap_handler(AccelAxisType axis, int32_t direction) {
+  display_battery_level();
+}
+
 static void main_window_load(Window *window) {
   // Get information about the Window
   Layer *window_layer = window_get_root_layer(window);
@@ -76,26 +108,31 @@ static void main_window_load(Window *window) {
   int window_width = bounds.size.w;
     
   // Create and position TextLayer elements
+  s_battery_layer = text_layer_create(GRect(0, 0, window_width, 18));
   s_time_layer = text_layer_create(GRect(0, PBL_IF_ROUND_ELSE(30, 20), window_width, 65));
   s_habit_layer = text_layer_create(GRect(5, PBL_IF_ROUND_ELSE(75, 65), (window_width - 10), 65));
   s_date_layer = text_layer_create(GRect(0, 135, window_width, 30));
   
-  // Set background color to clear
+  // Set background colors
+  text_layer_set_background_color(s_battery_layer, GColorWhite);
   text_layer_set_background_color(s_time_layer, GColorClear);
   text_layer_set_background_color(s_habit_layer, GColorClear);
   text_layer_set_background_color(s_date_layer, GColorClear);
   
-  // Set text color to white
+  // Set text colors
+  text_layer_set_text_color(s_battery_layer, GColorBlack);
   text_layer_set_text_color(s_time_layer, GColorWhite);
   text_layer_set_text_color(s_habit_layer, GColorWhite);
   text_layer_set_text_color(s_date_layer, GColorWhite);
   
   // Set fonts
+  text_layer_set_font(s_battery_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD));
   text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_LECO_38_BOLD_NUMBERS));
   text_layer_set_font(s_habit_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   
   // Center all text
+  text_layer_set_text_alignment(s_battery_layer, GTextAlignmentCenter);
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
   text_layer_set_text_alignment(s_habit_layer, GTextAlignmentCenter);
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
@@ -104,9 +141,13 @@ static void main_window_load(Window *window) {
   text_layer_set_text(s_habit_layer, PLACEHOLDER_HABIT);
 
   // Add it as a child layer to the Window's root layer
+  layer_add_child(window_layer, text_layer_get_layer(s_battery_layer));
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
   layer_add_child(window_layer, text_layer_get_layer(s_habit_layer));
   layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
+  
+  // Hide battery level bar initially
+  hide_battery_level(NULL);
   
   // Get and display current time and date at load
   time_t temp = time(NULL);
@@ -116,6 +157,9 @@ static void main_window_load(Window *window) {
   
   // Subscribe to tick timer for future time updates
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+  
+  // Subscribe to accel tap service to detect shakes
+  accel_tap_service_subscribe(tap_handler);
   
   // Display habits starting at first one at load
   s_current_habit = HABIT1_PERSIST_KEY;
